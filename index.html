@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timestamp Logger</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    .row {
+      margin: 10px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    button {
+      padding: 12px 18px;
+      min-width: 56px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background-color: #f3f3f3;
+      cursor: pointer;
+      font-size: 16px;
+      touch-action: manipulation;
+    }
+
+    button:hover {
+      background-color: #e0e0e0;
+    }
+
+    .name-selected {
+      background-color: #cce5ff;
+      border-color: #80bdff;
+    }
+
+    /* Timeline styles */
+    #timelineContainer {
+      margin-top: 20px;
+    }
+
+    #timelineLabel {
+      text-align: center;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    #timeline {
+      border-top: 1px solid #ddd;
+      padding-top: 12px;
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      min-height: 80px;
+      padding-bottom: 8px;
+    }
+
+    .timeline-event {
+      flex-shrink: 0;
+      min-width: 90px;
+      padding: 6px 10px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      background-color: #fafafa;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .timeline-event-main {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+
+    .timeline-event-time {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    /* Section title used for the Names/Numbers headings */
+    .section-title {
+      text-align: center;
+      width: 100%;
+      margin-top: 8px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1 style="text-align: center;">Timestamp Logger</h1>
+  <p style="text-align: center;">
+    Click a <strong>Name</strong> button, then a <strong>Number</strong> button.
+    Logs appear in the format: <code>[Name][Number] - 7:42:15 PM</code>
+  </p>
+
+  <!-- Top row: name buttons -->
+  <div class="section-title"><strong>Names</strong></div>
+  <div id="nameRow" class="row"></div>
+
+  <!-- Second row: number buttons -->
+  <div class="section-title"><strong>Numbers</strong></div>
+  <div id="numberRow" class="row"></div>
+
+  <!-- Horizontal timeline -->
+  <div id="timelineContainer">
+    <div id="timelineLabel">Timeline</div>
+    <div id="timeline"></div>
+  </div>
+
+  <div class="controls">
+    <button id="downloadBtn">Download log.txt</button>
+    <button id="clearBtn">Clear log</button>
+  </div>
+
+  <script>
+    // --- Data sets ---
+    const NAMES = [
+      "Jack", "Emily", "Michael", "Sarah", "David",
+      "Jessica", "Daniel", "Ashley", "Matthew"
+    ];
+
+    const NUMBERS = Array.from({ length: 13 }, (_, i) => i + 1); // 1–13
+
+    // Now we store structured entries: { combo, time }
+    const logEntries = [];
+    let selectedName = null;
+
+    const nameRow = document.getElementById("nameRow");
+    const numberRow = document.getElementById("numberRow");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const timeline = document.getElementById("timeline");
+
+    // --- Helper: render the horizontal timeline ---
+    function refreshTimeline() {
+      // Clear current timeline
+      timeline.innerHTML = "";
+
+      // Add each event as a chip
+      logEntries.forEach(entry => {
+        const eventDiv = document.createElement("div");
+        eventDiv.className = "timeline-event";
+
+        const mainLine = document.createElement("div");
+        mainLine.className = "timeline-event-main";
+        mainLine.textContent = entry.combo; // e.g., Jack12
+
+        const timeLine = document.createElement("div");
+        timeLine.className = "timeline-event-time";
+        timeLine.textContent = entry.time; // e.g., 7:42:15 PM
+
+        eventDiv.appendChild(mainLine);
+        eventDiv.appendChild(timeLine);
+        timeline.appendChild(eventDiv);
+      });
+
+      // Auto-scroll to the latest entry (optional)
+      if (timeline.scrollWidth > timeline.clientWidth) {
+        timeline.scrollLeft = timeline.scrollWidth;
+      }
+    }
+
+    // --- Format time as 12-hour AM/PM ---
+    function get12HourTime() {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? "PM" : "AM";
+
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+
+      return `${hours}:${minutes}:${seconds} ${ampm}`;
+    }
+
+    // --- Create name buttons ---
+    NAMES.forEach(name => {
+      const btn = document.createElement("button");
+      btn.textContent = name;
+
+      btn.addEventListener("click", () => {
+        selectedName = name;
+        document
+          .querySelectorAll("#nameRow button")
+          .forEach(b => b.classList.remove("name-selected"));
+        btn.classList.add("name-selected");
+      });
+
+      nameRow.appendChild(btn);
+    });
+
+    // --- Create number buttons ---
+    NUMBERS.forEach(num => {
+      const btn = document.createElement("button");
+      btn.textContent = num;
+
+      btn.addEventListener("click", () => {
+        if (!selectedName) {
+          alert("Please select a name first.");
+          return;
+        }
+
+        const combo = `${selectedName}${num}`; // e.g., Jack12
+        const time = get12HourTime();
+
+        // Store structured entry
+        logEntries.push({ combo, time });
+
+        // Refresh timeline display
+        refreshTimeline();
+        console.log("Logged:", combo, "-", time);
+      });
+
+      numberRow.appendChild(btn);
+    });
+
+    // --- Download log as log.txt ---
+    downloadBtn.addEventListener("click", () => {
+      if (logEntries.length === 0) {
+        alert("No logs to download yet.");
+        return;
+      }
+
+      // Convert entries to "NameNumber - time" lines
+      const text = logEntries
+        .map(entry => `${entry.combo} - ${entry.time}`)
+        .join("\n");
+
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "log.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    // --- Clear log & timeline ---
+    clearBtn.addEventListener("click", () => {
+      if (!confirm("Clear all log entries?")) return;
+      logEntries.length = 0;
+      refreshTimeline();
+    });
+  </script>
+</body>
+
+</html>
