@@ -95,6 +95,69 @@
       margin-top: 8px;
       font-size: 18px;
     }
+
+    /* Improved touch targets and inline-edit styles for iPad */
+    .name-wrapper {
+      display: inline-flex;
+      flex-direction: column;
+      /* stack vertically */
+      align-items: center;
+      gap: 6px;
+      min-width: 64px;
+      /* keeps consistent column width */
+    }
+
+    .name-btn {
+      padding: 12px 18px;
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background-color: #f3f3f3;
+      cursor: pointer;
+      font-size: 16px;
+      touch-action: manipulation;
+      box-sizing: border-box;
+    }
+
+    .edit-btn {
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      width: 100%;
+      /* span under the name button */
+      box-sizing: border-box;
+      margin-top: 4px;
+      /* small separation under the name */
+    }
+
+    .name-input {
+      padding: 10px 12px;
+      min-width: 80px;
+      border: 1px solid #8ab4ff;
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    /* larger touch targets on coarse pointers (tablets / iPad) */
+    @media (pointer: coarse) {
+      .name-btn,
+      .edit-btn,
+      .name-input {
+        padding: 16px 20px;
+        font-size: 18px;
+      }
+
+      button {
+        min-width: 68px;
+      }
+    }
   </style>
 </head>
 
@@ -126,10 +189,31 @@
 
   <script>
     // --- Data sets ---
-    const NAMES = [
+    const STORAGE_KEY = 'kat_names_v1';
+    const DEFAULT_NAMES = [
       "Jack", "Emily", "Michael", "Sarah", "David",
       "Jessica", "Daniel", "Ashley", "Matthew"
     ];
+
+    function loadNames() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return DEFAULT_NAMES.slice();
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.every(n => typeof n === 'string')) {
+          return parsed;
+        }
+      } catch (e) { /* fall through to defaults */ }
+      return DEFAULT_NAMES.slice();
+    }
+
+    function saveNames() {
+      const names = Array.from(document.querySelectorAll('#nameRow .name-btn'))
+        .map(b => b.dataset.name);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(names));
+    }
+
+    const NAMES = loadNames();
 
     const NUMBERS = Array.from({ length: 13 }, (_, i) => i + 1); // 1–13
 
@@ -145,10 +229,8 @@
 
     // --- Helper: render the horizontal timeline ---
     function refreshTimeline() {
-      // Clear current timeline
       timeline.innerHTML = "";
 
-      // Add each event as a chip
       logEntries.forEach(entry => {
         const eventDiv = document.createElement("div");
         eventDiv.className = "timeline-event";
@@ -166,7 +248,6 @@
         timeline.appendChild(eventDiv);
       });
 
-      // Auto-scroll to the latest entry (optional)
       if (timeline.scrollWidth > timeline.clientWidth) {
         timeline.scrollLeft = timeline.scrollWidth;
       }
@@ -186,21 +267,99 @@
       return `${hours}:${minutes}:${seconds} ${ampm}`;
     }
 
-    // --- Create name buttons ---
-    NAMES.forEach(name => {
-      const btn = document.createElement("button");
-      btn.textContent = name;
+    // --- Create name buttons (touch-friendly + inline edit) ---
+    function selectNameButton(btn) {
+      selectedName = btn.dataset.name;
+      document.querySelectorAll("#nameRow .name-btn").forEach(b => b.classList.remove("name-selected"));
+      btn.classList.add("name-selected");
+    }
 
-      btn.addEventListener("click", () => {
-        selectedName = name;
-        document
-          .querySelectorAll("#nameRow button")
-          .forEach(b => b.classList.remove("name-selected"));
-        btn.classList.add("name-selected");
+    function startInlineEdit(wrapper, btn) {
+      const current = btn.dataset.name;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "name-input";
+      input.value = current;
+      wrapper.replaceChild(input, btn);
+      input.focus();
+      input.select();
+
+      let finished = false;
+
+      function finish(save) {
+        if (finished) return;
+        finished = true;
+
+        let updated = false;
+        if (save) {
+          const v = input.value.trim();
+          if (v) {
+            btn.dataset.name = v;
+            btn.textContent = v;
+            updated = true;
+          }
+        }
+
+        if (input.parentNode === wrapper) {
+          wrapper.replaceChild(btn, input);
+        } else if (!wrapper.contains(btn)) {
+          wrapper.appendChild(btn);
+        }
+
+        if (updated) {
+          saveNames(); // now runs after button is restored
+        }
+
+        if (btn.classList.contains("name-selected")) {
+          selectedName = btn.dataset.name;
+        }
+
+        input.removeEventListener("blur", onBlur);
+        input.removeEventListener("keydown", onKey);
+      }
+
+      const onBlur = () => finish(true);
+      const onKey = (e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      };
+
+      input.addEventListener("blur", onBlur);
+      input.addEventListener("keydown", onKey);
+    }
+
+    function createNameControl(name) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "name-wrapper";
+
+      const btn = document.createElement("button");
+      btn.className = "name-btn";
+      btn.textContent = name;
+      btn.dataset.name = name;
+
+      btn.addEventListener("click", () => selectNameButton(btn));
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "edit-btn";
+      editBtn.type = "button";
+      editBtn.setAttribute("aria-label", "Edit name");
+      editBtn.textContent = "✏️";
+
+      // stop click from selecting name; open inline editor instead
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startInlineEdit(wrapper, btn);
       });
 
-      nameRow.appendChild(btn);
-    });
+      wrapper.appendChild(btn);
+      wrapper.appendChild(editBtn);
+      nameRow.appendChild(wrapper);
+    }
+
+    // initialize name controls
+    NAMES.forEach(createNameControl);
+    // ensure initial state is saved (in case defaults are used)
+    saveNames();
 
     // --- Create number buttons ---
     NUMBERS.forEach(num => {
@@ -234,7 +393,6 @@
         return;
       }
 
-      // Convert entries to "NameNumber - time" lines
       const text = logEntries
         .map(entry => `${entry.combo} - ${entry.time}`)
         .join("\n");
@@ -256,6 +414,21 @@
       logEntries.length = 0;
       refreshTimeline();
     });
+
+    // --- Clear storage and reload (for reset) ---
+    function resetApp() {
+      if (confirm("Reset app to default names?")) {
+        localStorage.removeItem('kat_names_v1');
+        location.reload();
+      }
+    }
+
+    // Add a reset button (for demo purposes)
+    const resetBtn = document.createElement("button");
+    resetBtn.textContent = "Reset to Defaults";
+    resetBtn.style.marginTop = "10px";
+    resetBtn.addEventListener("click", resetApp);
+    document.body.appendChild(resetBtn);
   </script>
 </body>
 
