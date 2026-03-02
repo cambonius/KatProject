@@ -97,7 +97,8 @@
     }
 
     /* Improved touch targets and inline-edit styles for iPad */
-    .name-wrapper {
+    .name-wrapper,
+    .number-wrapper {
       display: inline-flex;
       flex-direction: column;
       /* stack vertically */
@@ -107,7 +108,8 @@
       /* keeps consistent column width */
     }
 
-    .name-btn {
+    .name-btn,
+    .number-btn {
       padding: 12px 18px;
       width: 100%;
       border: 1px solid #ccc;
@@ -134,7 +136,8 @@
       /* small separation under the name */
     }
 
-    .name-input {
+    .name-input,
+    .number-input {
       padding: 10px 12px;
       min-width: 80px;
       border: 1px solid #8ab4ff;
@@ -148,8 +151,10 @@
     /* larger touch targets on coarse pointers (tablets / iPad) */
     @media (pointer: coarse) {
       .name-btn,
+      .number-btn,
       .edit-btn,
-      .name-input {
+      .name-input,
+      .number-input {
         padding: 16px 20px;
         font-size: 18px;
       }
@@ -190,10 +195,13 @@
   <script>
     // --- Data sets ---
     const STORAGE_KEY = 'kat_names_v1';
+    const STORAGE_KEY_NUMBERS = 'kat_numbers_v1';
     const DEFAULT_NAMES = [
       "Jack", "Emily", "Michael", "Sarah", "David",
       "Jessica", "Daniel", "Ashley", "Matthew"
     ];
+
+    const DEFAULT_NUMBER_LABELS = Array.from({ length: 13 }, (_, i) => String(i + 1)); // 1–13
 
     function loadNames() {
       try {
@@ -213,9 +221,27 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(names));
     }
 
+    function loadNumbers() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_NUMBERS);
+        if (!raw) return DEFAULT_NUMBER_LABELS.slice();
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.every(n => typeof n === 'string')) {
+          return parsed;
+        }
+      } catch (e) { /* fall through to defaults */ }
+      return DEFAULT_NUMBER_LABELS.slice();
+    }
+
+    function saveNumbers() {
+      const values = Array.from(document.querySelectorAll('#numberRow .number-btn'))
+        .map(b => b.dataset.value);
+      localStorage.setItem(STORAGE_KEY_NUMBERS, JSON.stringify(values));
+    }
+
     const NAMES = loadNames();
 
-    const NUMBERS = Array.from({ length: 13 }, (_, i) => i + 1); // 1–13
+    const NUMBER_LABELS = loadNumbers();
 
     // Now we store structured entries: { combo, time }
     const logEntries = [];
@@ -274,11 +300,15 @@
       btn.classList.add("name-selected");
     }
 
-    function startInlineEdit(wrapper, btn) {
-      const current = btn.dataset.name;
+    function startInlineEdit(wrapper, btn, opts) {
+      const datasetKey = opts.datasetKey;
+      const inputClass = opts.inputClass;
+      const onUpdated = opts.onUpdated;
+
+      const current = btn.dataset[datasetKey];
       const input = document.createElement("input");
       input.type = "text";
-      input.className = "name-input";
+      input.className = inputClass;
       input.value = current;
       wrapper.replaceChild(input, btn);
       input.focus();
@@ -294,7 +324,7 @@
         if (save) {
           const v = input.value.trim();
           if (v) {
-            btn.dataset.name = v;
+            btn.dataset[datasetKey] = v;
             btn.textContent = v;
             updated = true;
           }
@@ -306,8 +336,8 @@
           wrapper.appendChild(btn);
         }
 
-        if (updated) {
-          saveNames(); // now runs after button is restored
+        if (updated && typeof onUpdated === 'function') {
+          onUpdated();
         }
 
         if (btn.classList.contains("name-selected")) {
@@ -348,7 +378,11 @@
       // stop click from selecting name; open inline editor instead
       editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        startInlineEdit(wrapper, btn);
+        startInlineEdit(wrapper, btn, {
+          datasetKey: 'name',
+          inputClass: 'name-input',
+          onUpdated: saveNames,
+        });
       });
 
       wrapper.appendChild(btn);
@@ -361,10 +395,15 @@
     // ensure initial state is saved (in case defaults are used)
     saveNames();
 
-    // --- Create number buttons ---
-    NUMBERS.forEach(num => {
+    // --- Create number buttons (with inline edit) ---
+    function createNumberControl(label) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "number-wrapper";
+
       const btn = document.createElement("button");
-      btn.textContent = num;
+      btn.className = "number-btn";
+      btn.textContent = label;
+      btn.dataset.value = label;
 
       btn.addEventListener("click", () => {
         if (!selectedName) {
@@ -372,19 +411,37 @@
           return;
         }
 
-        const combo = `${selectedName}${num}`; // e.g., Jack12
+        const value = btn.dataset.value;
+        const combo = `${selectedName}${value}`; // e.g., Jack12 (or JackA)
         const time = get12HourTime();
 
-        // Store structured entry
         logEntries.push({ combo, time });
-
-        // Refresh timeline display
         refreshTimeline();
         console.log("Logged:", combo, "-", time);
       });
 
-      numberRow.appendChild(btn);
-    });
+      const editBtn = document.createElement("button");
+      editBtn.className = "edit-btn";
+      editBtn.type = "button";
+      editBtn.setAttribute("aria-label", "Edit number label");
+      editBtn.textContent = "✏️";
+
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startInlineEdit(wrapper, btn, {
+          datasetKey: 'value',
+          inputClass: 'number-input',
+          onUpdated: saveNumbers,
+        });
+      });
+
+      wrapper.appendChild(btn);
+      wrapper.appendChild(editBtn);
+      numberRow.appendChild(wrapper);
+    }
+
+    NUMBER_LABELS.forEach(createNumberControl);
+    saveNumbers();
 
     // --- Download log as log.txt ---
     downloadBtn.addEventListener("click", () => {
@@ -417,8 +474,9 @@
 
     // --- Clear storage and reload (for reset) ---
     function resetApp() {
-      if (confirm("Reset app to default names?")) {
+      if (confirm("Reset app to default names and numbers?")) {
         localStorage.removeItem('kat_names_v1');
+        localStorage.removeItem('kat_numbers_v1');
         location.reload();
       }
     }
