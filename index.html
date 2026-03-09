@@ -196,6 +196,7 @@
     // --- Data sets ---
     const STORAGE_KEY = 'kat_names_v1';
     const STORAGE_KEY_NUMBERS = 'kat_numbers_v1';
+    const STORAGE_KEY_LOG = 'kat_log_v1';
     const DEFAULT_NAMES = [
       "Jack", "Emily", "Michael", "Sarah", "David",
       "Jessica", "Daniel", "Ashley", "Matthew"
@@ -244,8 +245,22 @@
     const NUMBER_LABELS = loadNumbers();
 
     // Now we store structured entries: { combo, time }
-    const logEntries = [];
+    const logEntries = loadLogEntries();
     let selectedName = null;
+
+    function loadLogEntries() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_LOG);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { /* fall through */ }
+      return [];
+    }
+
+    function saveLogEntries() {
+      localStorage.setItem(STORAGE_KEY_LOG, JSON.stringify(logEntries));
+    }
 
     const nameRow = document.getElementById("nameRow");
     const numberRow = document.getElementById("numberRow");
@@ -416,6 +431,7 @@
         const time = get12HourTime();
 
         logEntries.push({ combo, time });
+        saveLogEntries();
         refreshTimeline();
         console.log("Logged:", combo, "-", time);
       });
@@ -469,6 +485,7 @@
     clearBtn.addEventListener("click", () => {
       if (!confirm("Clear all log entries?")) return;
       logEntries.length = 0;
+      saveLogEntries();
       refreshTimeline();
     });
 
@@ -477,6 +494,7 @@
       if (confirm("Reset app to default names and numbers?")) {
         localStorage.removeItem('kat_names_v1');
         localStorage.removeItem('kat_numbers_v1');
+        localStorage.removeItem('kat_log_v1');
         location.reload();
       }
     }
@@ -487,6 +505,9 @@
     resetBtn.style.marginTop = "10px";
     resetBtn.addEventListener("click", resetApp);
     document.body.appendChild(resetBtn);
+
+    // Restore timeline from saved log entries on load
+    refreshTimeline();
   </script>
 </body>
 
